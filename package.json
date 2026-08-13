@@ -1,0 +1,20 @@
+{
+  "name": "po-history-backend",
+  "version": "1.0.0",
+  "description": "Persistent storage and Excel/CSV export for PO Control's purchase order history.",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
+    "express": "^4.19.2"
+  }
+}
