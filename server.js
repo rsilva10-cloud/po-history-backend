@@ -25,16 +25,43 @@ app.get("/api/health", (req, res) => {
    will match "export.csv"/"export.xlsx" as an :id and 404 instead.
 --------------------------------------------------------- */
 
+// Filters POs by their createdAt date (the actual system entry date, not
+// the business orderDate) — for finance-style reconciliation exports that
+// need "everything entered in this window," regardless of what date was
+// typed into the order itself. Compares just the date portion (YYYY-MM-DD)
+// so timezone differences on the createdAt timestamp don't cause
+// off-by-one exclusions at the boundaries. No from/to = no filtering,
+// exactly matching the previous unfiltered behavior.
+function filterByDateEntered(pos, from, to) {
+  if (!from && !to) return pos;
+  return pos.filter((po) => {
+    const createdDate = po.createdAt ? po.createdAt.slice(0, 10) : null;
+    if (!createdDate) return false; // can't verify it's in-range, so exclude
+    if (from && createdDate < from) return false;
+    if (to && createdDate > to) return false;
+    return true;
+  });
+}
+
+function exportFilename(base, ext, from, to) {
+  if (from || to) {
+    return `${base}-${from || "start"}-to-${to || "now"}.${ext}`;
+  }
+  return `${base}.${ext}`;
+}
+
 app.get("/api/pos/export.csv", (req, res) => {
-  const rows = flattenPOs(store.readAll());
+  const { from, to } = req.query;
+  const rows = flattenPOs(filterByDateEntered(store.readAll(), from, to));
   const csv = toCsv(rows);
   res.setHeader("Content-Type", "text/csv");
-  res.setHeader("Content-Disposition", 'attachment; filename="po-history.csv"');
+  res.setHeader("Content-Disposition", `attachment; filename="${exportFilename("po-history", "csv", from, to)}"`);
   res.send(csv);
 });
 
 app.get("/api/pos/export.xlsx", async (req, res) => {
-  const rows = flattenPOs(store.readAll());
+  const { from, to } = req.query;
+  const rows = flattenPOs(filterByDateEntered(store.readAll(), from, to));
   const wb = new ExcelJS.Workbook();
   const sheet = wb.addWorksheet("PO History");
 
@@ -46,7 +73,7 @@ app.get("/api/pos/export.xlsx", async (req, res) => {
   }
 
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  res.setHeader("Content-Disposition", 'attachment; filename="po-history.xlsx"');
+  res.setHeader("Content-Disposition", `attachment; filename="${exportFilename("po-history", "xlsx", from, to)}"`);
   await wb.xlsx.write(res);
   res.end();
 });
