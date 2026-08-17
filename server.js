@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const ExcelJS = require("exceljs");
 const store = require("./store");
+const catalogStore = require("./catalogStore");
 const { flattenPOs, toCsv } = require("./exportRows");
 
 const app = express();
@@ -84,6 +85,25 @@ app.get("/api/pos/export.xlsx", async (req, res) => {
 
 app.get("/api/pos", (req, res) => {
   res.json(store.readAll());
+});
+
+/* ---------------------------------------------------------
+   CATALOG / INVENTORY
+   Single shared document, not individual records — the whole team edits
+   the same catalog, so this is read/replace rather than CRUD-per-item.
+--------------------------------------------------------- */
+
+app.get("/api/catalog", (req, res) => {
+  res.json(catalogStore.read());
+});
+
+app.put("/api/catalog", (req, res) => {
+  const { catalog, inventory, incomingInventory } = req.body || {};
+  if (!Array.isArray(catalog)) {
+    return res.status(400).json({ error: "catalog (array) is required" });
+  }
+  const saved = catalogStore.write({ catalog, inventory, incomingInventory });
+  res.json(saved);
 });
 
 app.get("/api/pos/:id", (req, res) => {
