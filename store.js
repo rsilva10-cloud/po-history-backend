@@ -44,6 +44,17 @@ function findById(id) {
 
 function insert(po) {
   const pos = readAll();
+  // Defense in depth against the id-collision bug that caused real
+  // duplicate/cross-contaminated records: reject rather than silently
+  // push a second entry sharing an id that's already in use. With the
+  // frontend now generating collision-proof ids, this should never
+  // actually trigger — but if it somehow does, failing loudly here beats
+  // quietly corrupting the data again.
+  if (pos.some((p) => p.id === po.id)) {
+    const err = new Error(`A PO with id "${po.id}" already exists`);
+    err.statusCode = 409;
+    throw err;
+  }
   const now = new Date().toISOString();
   const record = { ...po, createdAt: now, updatedAt: now };
   pos.push(record);

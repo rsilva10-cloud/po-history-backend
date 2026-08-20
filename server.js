@@ -116,8 +116,12 @@ app.post("/api/pos", (req, res) => {
   if (!req.body || !req.body.id) {
     return res.status(400).json({ error: "PO body with an id is required" });
   }
-  const record = store.insert(req.body);
-  res.status(201).json(record);
+  try {
+    const record = store.insert(req.body);
+    res.status(201).json(record);
+  } catch (err) {
+    res.status(err.statusCode || 500).json({ error: err.message || "Failed to save PO" });
+  }
 });
 
 app.put("/api/pos/:id", (req, res) => {
