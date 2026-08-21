@@ -10,6 +10,19 @@ const { flattenPOs, toCsv } = require("./exportRows");
 const app = express();
 app.use(express.json({ limit: "5mb" }));
 
+// Defense in depth: Node's default behavior for an unhandled promise
+// rejection is to crash the entire process. For a shared team backend,
+// that means one overlooked async error anywhere could take down PO
+// creation, catalog access, and everything else until Render restarts the
+// service. Log and keep running instead — every route handler should
+// still have its own try/catch, but this is the safety net if one doesn't.
+process.on("unhandledRejection", (err) => {
+  console.error("Unhandled rejection (server kept running):", err);
+});
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception (server kept running):", err);
+});
+
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || "*").split(",").map((s) => s.trim());
 app.use(
   cors({
@@ -62,22 +75,35 @@ app.get("/api/pos/export.csv", (req, res) => {
 });
 
 app.get("/api/pos/export.xlsx", async (req, res) => {
-  const { from, to } = req.query;
-  const rows = flattenPOs(filterByDateEntered(store.readAll(), from, to));
-  const wb = new ExcelJS.Workbook();
-  const sheet = wb.addWorksheet("PO History");
+  try {
+    const { from, to } = req.query;
+    const rows = flattenPOs(filterByDateEntered(store.readAll(), from, to));
+    const wb = new ExcelJS.Workbook();
+    const sheet = wb.addWorksheet("PO History");
 
-  if (rows.length > 0) {
-    const headers = Object.keys(rows[0]);
-    sheet.columns = headers.map((h) => ({ header: h, key: h, width: Math.max(12, h.length + 2) }));
-    rows.forEach((row) => sheet.addRow(row));
-    sheet.getRow(1).font = { bold: true };
+    if (rows.length > 0) {
+      const headers = Object.keys(rows[0]);
+      sheet.columns = headers.map((h) => ({ header: h, key: h, width: Math.max(12, h.length + 2) }));
+      rows.forEach((row) => sheet.addRow(row));
+      sheet.getRow(1).font = { bold: true };
+    }
+
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${exportFilename("po-history", "xlsx", from, to)}"`);
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    // CRITICAL: Express 4 does not auto-catch errors thrown inside async
+    // route handlers — an unhandled rejection here would crash the entire
+    // process (Node's default behavior), taking down every team member's
+    // access until Render restarts the service. Always catch explicitly.
+    console.error("Excel export failed:", err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Excel export failed" });
+    } else {
+      res.end();
+    }
   }
-
-  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  res.setHeader("Content-Disposition", `attachment; filename="${exportFilename("po-history", "xlsx", from, to)}"`);
-  await wb.xlsx.write(res);
-  res.end();
 });
 
 /* ---------------------------------------------------------
