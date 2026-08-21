@@ -4,6 +4,7 @@ const cors = require("cors");
 const ExcelJS = require("exceljs");
 const store = require("./store");
 const catalogStore = require("./catalogStore");
+const customerStore = require("./customerStore");
 const { flattenPOs, toCsv } = require("./exportRows");
 
 const app = express();
@@ -103,6 +104,25 @@ app.put("/api/catalog", (req, res) => {
     return res.status(400).json({ error: "catalog (array) is required" });
   }
   const saved = catalogStore.write({ catalog, inventory, incomingInventory });
+  res.json(saved);
+});
+
+/* ---------------------------------------------------------
+   CUSTOMERS / PARTNERS
+   Same shared-document pattern as catalog — the whole team adds to and
+   reads from one list, not per-record CRUD like POs.
+--------------------------------------------------------- */
+
+app.get("/api/customers", (req, res) => {
+  res.json(customerStore.read());
+});
+
+app.put("/api/customers", (req, res) => {
+  const { customers } = req.body || {};
+  if (!Array.isArray(customers)) {
+    return res.status(400).json({ error: "customers (array) is required" });
+  }
+  const saved = customerStore.write({ customers });
   res.json(saved);
 });
 
