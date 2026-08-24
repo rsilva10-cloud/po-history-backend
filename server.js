@@ -2,10 +2,38 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const ExcelJS = require("exceljs");
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
 const store = require("./store");
 const catalogStore = require("./catalogStore");
 const customerStore = require("./customerStore");
 const { flattenPOs, toCsv } = require("./exportRows");
+
+// Customer PO document attachments — stored on the same persistent disk as
+// pos.json/catalog.json/customers.json, under data/po-attachments/{poId}/.
+// Metadata (original filename, size, upload date) lives on the PO record
+// itself (customerPoAttachment field) so the frontend never has to make a
+// separate call just to know whether one exists.
+const ATTACHMENTS_DIR = process.env.ATTACHMENTS_DIR || path.join(__dirname, "data", "po-attachments");
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const dir = path.join(ATTACHMENTS_DIR, req.params.id);
+      fs.mkdirSync(dir, { recursive: true });
+      cb(null, dir);
+    },
+    filename: (req, file, cb) => {
+      // Keep a human-readable name on disk too, sanitized against path
+      // traversal / weird characters — the ORIGINAL filename (unsanitized)
+      // is preserved separately in the PO record for display and download.
+      const safe = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-100);
+      cb(null, `${Date.now()}-${safe}`);
+    },
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB — plenty for a PO document, small enough not to eat the shared disk
+});
+
 
 const app = express();
 app.use(express.json({ limit: "5mb" }));
@@ -179,7 +207,66 @@ app.put("/api/pos/:id", (req, res) => {
 app.delete("/api/pos/:id", (req, res) => {
   const removed = store.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: "Not found" });
+  // Clean up any attached file too, so deleted POs don't leave orphaned
+  // files slowly eating the shared disk over time.
+  const dir = path.join(ATTACHMENTS_DIR, req.params.id);
+  fs.rm(dir, { recursive: true, force: true }, () => {}); // best-effort, don't fail the delete over this
   res.status(204).end();
+});
+
+/* ---------------------------------------------------------
+   CUSTOMER PO ATTACHMENTS
+   One file per PO — uploading a new one replaces the old, matching how
+   most people think of "the customer's PO document" as a single thing,
+   not a list of versions.
+--------------------------------------------------------- */
+
+app.post("/api/pos/:id/attachment", (req, res) => {
+  const po = store.findById(req.params.id);
+  if (!po) return res.status(404).json({ error: "PO not found" });
+
+  upload.single("file")(req, res, (err) => {
+    if (err) {
+      const statusCode = err.code === "LIMIT_FILE_SIZE" ? 413 : 400;
+      return res.status(statusCode).json({ error: err.message || "Upload failed" });
+    }
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+    // Replacing an existing attachment — remove the old file from disk so
+    // it doesn't just sit there unreferenced.
+    if (po.customerPoAttachment?.storedAs) {
+      const oldPath = path.join(ATTACHMENTS_DIR, req.params.id, po.customerPoAttachment.storedAs);
+      fs.rm(oldPath, { force: true }, () => {});
+    }
+
+    const attachment = {
+      filename: req.file.originalname,
+      storedAs: req.file.filename,
+      size: req.file.size,
+      uploadedAt: new Date().toISOString(),
+    };
+    const updated = store.update(req.params.id, { ...po, customerPoAttachment: attachment });
+    res.json(updated);
+  });
+});
+
+app.get("/api/pos/:id/attachment", (req, res) => {
+  const po = store.findById(req.params.id);
+  if (!po || !po.customerPoAttachment) return res.status(404).json({ error: "No attachment found" });
+  const filePath = path.join(ATTACHMENTS_DIR, req.params.id, po.customerPoAttachment.storedAs);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: "Attachment file is missing on disk" });
+  res.download(filePath, po.customerPoAttachment.filename);
+});
+
+app.delete("/api/pos/:id/attachment", (req, res) => {
+  const po = store.findById(req.params.id);
+  if (!po) return res.status(404).json({ error: "PO not found" });
+  if (po.customerPoAttachment?.storedAs) {
+    const filePath = path.join(ATTACHMENTS_DIR, req.params.id, po.customerPoAttachment.storedAs);
+    fs.rm(filePath, { force: true }, () => {});
+  }
+  const updated = store.update(req.params.id, { ...po, customerPoAttachment: null });
+  res.json(updated);
 });
 
 const port = process.env.PORT || 3003;
