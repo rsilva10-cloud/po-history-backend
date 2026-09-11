@@ -41,6 +41,7 @@ function flattenPOs(pos) {
         Warehouse: "",
         Carrier: "",
         "Tracking #": "",
+        "Ship Date": "",
       });
       return;
     }
@@ -74,6 +75,7 @@ function flattenPOs(pos) {
         Warehouse: li.warehouseName || li.warehouseId || "",
         Carrier: carrier,
         "Tracking #": shipment.tracking || "",
+        "Ship Date": shipment.shipDate || "",
       });
     });
   });
