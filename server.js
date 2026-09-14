@@ -74,7 +74,7 @@ app.get("/api/health", (req, res) => {
 // password, which is async.
 (async () => {
   if (process.env.INITIAL_ADMIN_EMAIL && process.env.INITIAL_ADMIN_PASSWORD && userStore.readAllPublic().length === 0) {
-    await userStore.add(process.env.INITIAL_ADMIN_EMAIL, "Initial admin", process.env.INITIAL_ADMIN_PASSWORD, true);
+    await userStore.add(process.env.INITIAL_ADMIN_EMAIL, "Initial admin", process.env.INITIAL_ADMIN_PASSWORD, "admin");
     console.log(`Seeded initial admin account for ${process.env.INITIAL_ADMIN_EMAIL}`);
   }
 })();
@@ -97,7 +97,7 @@ app.post("/api/auth/google", async (req, res) => {
       });
     }
     const token = issueSessionToken(googleUser);
-    res.json({ token, user: googleUser });
+    res.json({ token, user: { email: googleUser.email, name: authorized.name || googleUser.name, role: authorized.role } });
   } catch (err) {
     res.status(401).json({ error: err.message || "Google sign-in failed" });
   }
@@ -127,10 +127,13 @@ app.get("/api/auth/users", requireAuth, requireAdmin, (req, res) => {
 
 app.post("/api/auth/users", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { email, name, password, isAdmin } = req.body || {};
+    const { email, name, password, role } = req.body || {};
     if (!email || !password) return res.status(400).json({ error: "email and password are required" });
     if (password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters" });
-    const users = await userStore.add(email, name, password, isAdmin);
+    if (role && !userStore.VALID_ROLES.includes(role)) {
+      return res.status(400).json({ error: `role must be one of: ${userStore.VALID_ROLES.join(", ")}` });
+    }
+    const users = await userStore.add(email, name, password, role);
     res.json(users);
   } catch (err) {
     res.status(500).json({ error: err.message || "Failed to add user" });
@@ -143,8 +146,8 @@ app.delete("/api/auth/users/:email", requireAuth, requireAdmin, (req, res) => {
   // whole data file.
   const allUsers = userStore.readAllPublic();
   const target = allUsers.find((u) => u.email.toLowerCase() === req.params.email.toLowerCase());
-  const remainingAdmins = allUsers.filter((u) => u.isAdmin && u.email.toLowerCase() !== req.params.email.toLowerCase());
-  if (target?.isAdmin && remainingAdmins.length === 0) {
+  const remainingAdmins = allUsers.filter((u) => u.role === "admin" && u.email.toLowerCase() !== req.params.email.toLowerCase());
+  if (target?.role === "admin" && remainingAdmins.length === 0) {
     return res.status(400).json({ error: "Can't remove the last remaining admin" });
   }
   res.json(userStore.remove(req.params.email));
