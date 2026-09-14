@@ -153,6 +153,25 @@ app.delete("/api/auth/users/:email", requireAuth, requireAdmin, (req, res) => {
   res.json(userStore.remove(req.params.email));
 });
 
+// Changes a user's role without touching their password — separate from
+// the add-user endpoint above, which resets the password as a side effect.
+app.patch("/api/auth/users/:email/role", requireAuth, requireAdmin, (req, res) => {
+  const { role } = req.body || {};
+  if (!userStore.VALID_ROLES.includes(role)) {
+    return res.status(400).json({ error: `role must be one of: ${userStore.VALID_ROLES.join(", ")}` });
+  }
+  const allUsers = userStore.readAllPublic();
+  const target = allUsers.find((u) => u.email.toLowerCase() === req.params.email.toLowerCase());
+  if (!target) return res.status(404).json({ error: "User not found" });
+  // Same last-admin safety net as deletion — demoting the last admin would
+  // lock everyone out of user management just as effectively as deleting them.
+  const remainingAdmins = allUsers.filter((u) => u.role === "admin" && u.email.toLowerCase() !== req.params.email.toLowerCase());
+  if (target.role === "admin" && role !== "admin" && remainingAdmins.length === 0) {
+    return res.status(400).json({ error: "Can't demote the last remaining admin" });
+  }
+  res.json(userStore.setRole(req.params.email, role));
+});
+
 /* ---------------------------------------------------------
    EXPORT
    IMPORTANT: these must be registered BEFORE /api/pos/:id, or Express

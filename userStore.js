@@ -107,6 +107,18 @@ function remove(email) {
   return readAllPublic();
 }
 
+// Changes only the role — leaves passwordHash and everything else on the
+// record untouched, unlike add() which is also used for password resets.
+function setRole(email, role) {
+  const users = readAll();
+  const target = String(email).toLowerCase();
+  const idx = users.findIndex((u) => u.email.toLowerCase() === target);
+  if (idx === -1) return null;
+  users[idx] = { ...users[idx], role };
+  writeAll(users);
+  return readAllPublic();
+}
+
 async function verifyPassword(email, plainPassword) {
   const user = findByEmail(email);
   if (!user) return null;
@@ -114,4 +126,4 @@ async function verifyPassword(email, plainPassword) {
   return match ? { email: user.email, name: user.name, role: user.role } : null;
 }
 
-module.exports = { readAllPublic, findByEmail, getRole, isAdmin, add, remove, verifyPassword, VALID_ROLES };
+module.exports = { readAllPublic, findByEmail, getRole, isAdmin, add, remove, setRole, verifyPassword, VALID_ROLES };
