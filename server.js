@@ -6,11 +6,13 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const store = require("./store");
+const invoiceStore = require("./invoiceStore");
 const catalogStore = require("./catalogStore");
 const customerStore = require("./customerStore");
 const userStore = require("./userStore");
 const { verifyGoogleToken, issueSessionToken, requireAuth, requireAdmin } = require("./auth");
 const { flattenPOs, toCsv } = require("./exportRows");
+const { flattenInvoices } = require("./invoiceExportRows");
 
 // Customer PO document attachments — stored on the same persistent disk as
 // pos.json/catalog.json/customers.json, under data/po-attachments/{poId}/.
@@ -241,6 +243,83 @@ app.get("/api/pos/export.xlsx", requireAuth, async (req, res) => {
     } else {
       res.end();
     }
+  }
+});
+
+/* ---------------------------------------------------------
+   INVOICES
+   Logged separately from POs — a PO's totals/customer can change over
+   time (edits, re-syncing catalog prices), but an invoice, once issued,
+   represents what was actually billed at that moment. Filtered by
+   invoiceDate (the business date on the invoice) rather than createdAt,
+   since this report is for "invoices dated in this window," matching how
+   finance actually thinks about invoice reporting.
+--------------------------------------------------------- */
+
+function filterByInvoiceDate(invoices, from, to) {
+  if (!from && !to) return invoices;
+  return invoices.filter((inv) => {
+    const d = inv.invoiceDate || null;
+    if (!d) return false;
+    if (from && d < from) return false;
+    if (to && d > to) return false;
+    return true;
+  });
+}
+
+app.get("/api/invoices/export.csv", requireAuth, (req, res) => {
+  const { from, to } = req.query;
+  const rows = flattenInvoices(filterByInvoiceDate(invoiceStore.readAll(), from, to));
+  const csv = toCsv(rows);
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="${exportFilename("invoices", "csv", from, to)}"`);
+  res.send(csv);
+});
+
+app.get("/api/invoices/export.xlsx", requireAuth, async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    const rows = flattenInvoices(filterByInvoiceDate(invoiceStore.readAll(), from, to));
+    const wb = new ExcelJS.Workbook();
+    const sheet = wb.addWorksheet("Invoices");
+
+    if (rows.length > 0) {
+      const headers = Object.keys(rows[0]);
+      sheet.columns = headers.map((h) => ({ header: h, key: h, width: Math.max(12, h.length + 2) }));
+      rows.forEach((row) => sheet.addRow(row));
+      sheet.getRow(1).font = { bold: true };
+    }
+
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${exportFilename("invoices", "xlsx", from, to)}"`);
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error("Invoice Excel export failed:", err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Excel export failed" });
+    } else {
+      res.end();
+    }
+  }
+});
+
+app.get("/api/invoices", requireAuth, (req, res) => {
+  res.json(invoiceStore.readAll());
+});
+
+// Logs (or updates, if this invoiceNumber was already logged) an invoice
+// record. Called right after generating an invoice PDF client-side — see
+// the frontend's getOrAssignInvoiceNumber/generateInvoicePdf call site.
+// Not role-restricted server-side: the "Generate invoice" button is
+// already hidden client-side from anyone without Finance/Admin access,
+// which is the enforcement level asked for.
+app.post("/api/invoices", requireAuth, (req, res) => {
+  try {
+    const record = invoiceStore.upsert(req.body || {});
+    res.status(201).json(record);
+  } catch (err) {
+    res.status(err.statusCode || 500).json({ error: err.message || "Failed to log invoice" });
   }
 });
 
