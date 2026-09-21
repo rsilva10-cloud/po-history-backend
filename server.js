@@ -9,6 +9,7 @@ const store = require("./store");
 const invoiceStore = require("./invoiceStore");
 const catalogStore = require("./catalogStore");
 const historicalDemandStore = require("./historicalDemandStore");
+const warehouseAllocationStore = require("./warehouseAllocationStore");
 const customerStore = require("./customerStore");
 const userStore = require("./userStore");
 const { verifyGoogleToken, issueSessionToken, requireAuth, requireAdmin } = require("./auth");
@@ -369,6 +370,25 @@ app.put("/api/historical-demand", requireAuth, (req, res) => {
     return res.status(400).json({ error: "rows (array) is required" });
   }
   const saved = historicalDemandStore.write({ rows });
+  res.json(saved);
+});
+
+/* ---------------------------------------------------------
+   WAREHOUSE ALLOCATION
+   Feeds the Reorder Forecast's warehouse split for SKUs it covers — same
+   shared read/replace pattern as historical demand, separate dataset.
+--------------------------------------------------------- */
+
+app.get("/api/warehouse-allocation", requireAuth, (req, res) => {
+  res.json(warehouseAllocationStore.read());
+});
+
+app.put("/api/warehouse-allocation", requireAuth, (req, res) => {
+  const { rows } = req.body || {};
+  if (!Array.isArray(rows)) {
+    return res.status(400).json({ error: "rows (array) is required" });
+  }
+  const saved = warehouseAllocationStore.write({ rows });
   res.json(saved);
 });
 
