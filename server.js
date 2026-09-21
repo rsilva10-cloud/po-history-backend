@@ -8,6 +8,7 @@ const fs = require("fs");
 const store = require("./store");
 const invoiceStore = require("./invoiceStore");
 const catalogStore = require("./catalogStore");
+const historicalDemandStore = require("./historicalDemandStore");
 const customerStore = require("./customerStore");
 const userStore = require("./userStore");
 const { verifyGoogleToken, issueSessionToken, requireAuth, requireAdmin } = require("./auth");
@@ -347,6 +348,27 @@ app.put("/api/catalog", requireAuth, (req, res) => {
     return res.status(400).json({ error: "catalog (array) is required" });
   }
   const saved = catalogStore.write({ catalog, inventory, incomingInventory });
+  res.json(saved);
+});
+
+/* ---------------------------------------------------------
+   HISTORICAL DEMAND
+   Feeds the Reorder Forecast's seasonal adjustment only — never a real
+   order, and separate from store.js (live POs) on purpose. Same shared
+   read/replace pattern as catalog/customers: uploading a new file
+   replaces the whole dataset.
+--------------------------------------------------------- */
+
+app.get("/api/historical-demand", requireAuth, (req, res) => {
+  res.json(historicalDemandStore.read());
+});
+
+app.put("/api/historical-demand", requireAuth, (req, res) => {
+  const { rows } = req.body || {};
+  if (!Array.isArray(rows)) {
+    return res.status(400).json({ error: "rows (array) is required" });
+  }
+  const saved = historicalDemandStore.write({ rows });
   res.json(saved);
 });
 
