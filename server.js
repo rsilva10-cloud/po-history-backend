@@ -10,6 +10,7 @@ const invoiceStore = require("./invoiceStore");
 const catalogStore = require("./catalogStore");
 const historicalDemandStore = require("./historicalDemandStore");
 const warehouseAllocationStore = require("./warehouseAllocationStore");
+const supplierAvailabilityStore = require("./supplierAvailabilityStore");
 const customerStore = require("./customerStore");
 const userStore = require("./userStore");
 const { verifyGoogleToken, issueSessionToken, requireAuth, requireAdmin } = require("./auth");
@@ -389,6 +390,25 @@ app.put("/api/warehouse-allocation", requireAuth, (req, res) => {
     return res.status(400).json({ error: "rows (array) is required" });
   }
   const saved = warehouseAllocationStore.write({ rows });
+  res.json(saved);
+});
+
+/* ---------------------------------------------------------
+   SUPPLIER AVAILABILITY
+   What a supplier (currently: Stanley/Stella) has available to sell you —
+   distinct from your own on-hand/incoming inventory in catalogStore.js.
+--------------------------------------------------------- */
+
+app.get("/api/supplier-availability", requireAuth, (req, res) => {
+  res.json(supplierAvailabilityStore.read());
+});
+
+app.put("/api/supplier-availability", requireAuth, (req, res) => {
+  const { bySku } = req.body || {};
+  if (bySku !== null && typeof bySku !== "object") {
+    return res.status(400).json({ error: "bySku (object or null) is required" });
+  }
+  const saved = supplierAvailabilityStore.write({ bySku });
   res.json(saved);
 });
 
