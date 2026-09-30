@@ -11,6 +11,7 @@ const catalogStore = require("./catalogStore");
 const historicalDemandStore = require("./historicalDemandStore");
 const warehouseAllocationStore = require("./warehouseAllocationStore");
 const supplierAvailabilityStore = require("./supplierAvailabilityStore");
+const salesOrderCounterStore = require("./salesOrderCounterStore");
 const customerStore = require("./customerStore");
 const userStore = require("./userStore");
 const { verifyGoogleToken, issueSessionToken, requireAuth, requireAdmin } = require("./auth");
@@ -410,6 +411,31 @@ app.put("/api/supplier-availability", requireAuth, (req, res) => {
   }
   const saved = supplierAvailabilityStore.write({ bySku });
   res.json(saved);
+});
+
+/* ---------------------------------------------------------
+   SALES ORDER # COUNTER
+   Issues one value at a time, atomically — see salesOrderCounterStore.js
+   for why this fixes the duplicate-number bug the old client-side
+   counter allowed.
+--------------------------------------------------------- */
+
+app.post("/api/sales-order-number/next", requireAuth, (req, res) => {
+  const next = salesOrderCounterStore.nextValue();
+  res.json({ value: `SO-${next}` });
+});
+
+// One-time migration helper: called once by the frontend with the
+// highest Sales Order # it already sees in real PO data, so the atomic
+// counter continues forward from there instead of colliding with
+// numbers assigned before this counter existed.
+app.put("/api/sales-order-number/ensure-at-least", requireAuth, (req, res) => {
+  const { min } = req.body || {};
+  if (!Number.isFinite(Number(min))) {
+    return res.status(400).json({ error: "min (number) is required" });
+  }
+  const current = salesOrderCounterStore.ensureAtLeast(Number(min));
+  res.json({ current });
 });
 
 /* ---------------------------------------------------------

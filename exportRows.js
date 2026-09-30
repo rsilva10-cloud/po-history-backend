@@ -13,6 +13,15 @@ function money(n) {
   return Number.isFinite(num) ? Math.round(num * 100) / 100 : "";
 }
 
+// Purchase/Sell Price are per-unit rates, not totals — some real SKUs are
+// priced to 4-5 decimals (e.g. $0.02823 for a bulk envelope), and
+// rounding those to 2 decimals silently distorts the real unit cost.
+// Passed through exactly as entered instead, matching the sales order.
+function rawNumber(n) {
+  const num = Number(n);
+  return Number.isFinite(num) ? num : "";
+}
+
 function flattenPOs(pos) {
   const rows = [];
 
@@ -36,6 +45,8 @@ function flattenPOs(pos) {
         Qty: "",
         "Purchase Price": "",
         "Sell Price": "",
+        "Line Purchase Total": "",
+        "Line Sell Total": "",
         "Line Margin $": "",
         "Line Margin %": "",
         Warehouse: "",
@@ -68,8 +79,10 @@ function flattenPOs(pos) {
         "SKU Number": li.skuNumber || "",
         "Item Name": li.itemName || "",
         Qty: qty,
-        "Purchase Price": money(purchase),
-        "Sell Price": money(sell),
+        "Purchase Price": rawNumber(li.purchasePrice),
+        "Sell Price": rawNumber(li.sellPrice),
+        "Line Purchase Total": money(purchase * qty),
+        "Line Sell Total": money(sell * qty),
         "Line Margin $": money(marginDollar),
         "Line Margin %": Math.round(marginPct * 10) / 10,
         Warehouse: li.warehouseName || li.warehouseId || "",
