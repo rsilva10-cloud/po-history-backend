@@ -12,6 +12,7 @@ const historicalDemandStore = require("./historicalDemandStore");
 const warehouseAllocationStore = require("./warehouseAllocationStore");
 const supplierAvailabilityStore = require("./supplierAvailabilityStore");
 const salesOrderCounterStore = require("./salesOrderCounterStore");
+const supplierOrderRoutes = require("./supplierOrderRoutes");
 const customerStore = require("./customerStore");
 const userStore = require("./userStore");
 const { verifyGoogleToken, issueSessionToken, requireAuth, requireAdmin } = require("./auth");
@@ -437,6 +438,14 @@ app.put("/api/sales-order-number/ensure-at-least", requireAuth, (req, res) => {
   const current = salesOrderCounterStore.ensureAtLeast(Number(min));
   res.json({ current });
 });
+
+/* ---------------------------------------------------------
+   SUPPLIER ORDER RECORD
+   Which purchase orders have been sent to suppliers whose APIs can't tell
+   us (LAT today). Reserving a PO number is atomic, so the same PO can never
+   be sent twice — see supplierOrderLedgerStore.js.
+--------------------------------------------------------- */
+supplierOrderRoutes.mount(app, { requireAuth, requireAdmin });
 
 /* ---------------------------------------------------------
    CUSTOMERS / PARTNERS
