@@ -446,6 +446,7 @@ app.put("/api/sales-order-number/ensure-at-least", requireAuth, (req, res) => {
    be sent twice — see supplierOrderLedgerStore.js.
 --------------------------------------------------------- */
 supplierOrderRoutes.mount(app, { requireAuth, requireAdmin });
+require("./demandHistoryRoutes").mount(app, { requireAuth, requireAdmin });
 
 /* ---------------------------------------------------------
    CUSTOMERS / PARTNERS
