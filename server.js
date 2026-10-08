@@ -346,14 +346,11 @@ app.get("/api/catalog", requireAuth, (req, res) => {
   res.json(catalogStore.read());
 });
 
-app.put("/api/catalog", requireAuth, (req, res) => {
-  const { catalog, inventory, incomingInventory } = req.body || {};
-  if (!Array.isArray(catalog)) {
-    return res.status(400).json({ error: "catalog (array) is required" });
-  }
-  const saved = catalogStore.write({ catalog, inventory, incomingInventory });
-  res.json(saved);
-});
+// Saves go through catalogProtect: automatic backups, a guard against a save that would shrink the
+// catalog dramatically, and backup/restore routes (see catalogProtect.js).
+const catalogProtect = require("./catalogProtect");
+app.put("/api/catalog", requireAuth, catalogProtect.putHandler(catalogStore));
+catalogProtect.mount(app, { requireAuth, requireAdmin, catalogStore });
 
 /* ---------------------------------------------------------
    HISTORICAL DEMAND
