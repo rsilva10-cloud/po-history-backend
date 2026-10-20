@@ -355,6 +355,9 @@ catalogProtect.mount(app, { requireAuth, requireAdmin, catalogStore });
 // Which catalog SKU # each Flexport item line belongs to (see flexportMatchStore.js).
 require("./flexportMatchRoutes").mount(app, { requireAuth, catalogStore });
 
+// Settings shared by everyone, saved by admins (see sharedSettingsStore.js).
+require("./sharedSettingsRoutes").mount(app, { requireAuth, requireAdmin });
+
 /* ---------------------------------------------------------
    HISTORICAL DEMAND
    Feeds the Reorder Forecast's seasonal adjustment only — never a real
