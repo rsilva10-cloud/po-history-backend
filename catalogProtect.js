@@ -13,6 +13,9 @@
  *     replacing the real one. A copy of the real catalog is kept when it triggers.
  *  3. RESTORE. List, download, and (admin only) restore any backup. Restoring first keeps a copy of the
  *     catalog it replaces, so a restore can itself be undone.
+ *  4. A VERSION CHECK. Each save names the catalog version it was loaded from (baseVersion); if the stored
+ *     catalog has moved on, the save is refused (409, code CATALOG_STALE). This is what stops a tab left
+ *     open since yesterday from putting back items others removed (it happened: 4,290 SKUs, 2026-10-16).
  *
  * server.js: replace the PUT /api/catalog handler with catalogProtect.putHandler(catalogStore) and add
  *   catalogProtect.mount(app, { requireAuth, requireAdmin, catalogStore });
@@ -96,13 +99,25 @@ function readBackup(id) {
 function putHandler(catalogStore) {
   return (req, res) => {
     try {
-      const { catalog, inventory, incomingInventory, allowShrink } = req.body || {};
+      const { catalog, inventory, incomingInventory, allowShrink, baseVersion } = req.body || {};
       if (!Array.isArray(catalog)) return res.status(400).json({ error: "catalog (array) is required" });
       let before = null;
       try {
         before = catalogStore.read();
       } catch {
         before = null; // an unreadable stored file can't be backed up, and shouldn't block a good save
+      }
+      // A save must name the version it was loaded from. Someone saved since (or the
+      // request comes from an app version too old to send one): refuse, so an old tab
+      // can't put back a catalog others have changed. Nothing is written in between
+      // (no await), so two saves can't both pass this check.
+      const currentVersion = catalogStore.versionOf(before);
+      if (baseVersion !== currentVersion) {
+        return res.status(409).json({
+          code: "CATALOG_STALE",
+          currentVersion,
+          error: "Someone changed the catalog after this page loaded it, so this change wasn't saved (it would have undone theirs). Reload the page to get the latest catalog, then make your change again.",
+        });
       }
       const beforeCount = before && Array.isArray(before.catalog) ? before.catalog.length : 0;
       if (allowShrink !== true && beforeCount >= SHRINK_FLOOR && catalog.length < beforeCount * SHRINK_RATIO) {
@@ -160,8 +175,8 @@ function mount(app, { requireAuth, requireAdmin, catalogStore }) {
         current = null;
       }
       if (current && Array.isArray(current.catalog) && current.catalog.length > 0) snapshot(current, "before-restore");
-      catalogStore.write({ catalog: b.doc.catalog, inventory: b.doc.inventory, incomingInventory: b.doc.incomingInventory });
-      res.json({ restored: req.params.id, items: b.doc.catalog.length, doc: b.doc });
+      const written = catalogStore.write({ catalog: b.doc.catalog, inventory: b.doc.inventory, incomingInventory: b.doc.incomingInventory });
+      res.json({ restored: req.params.id, items: b.doc.catalog.length, doc: b.doc, version: written.version });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

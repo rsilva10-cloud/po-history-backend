@@ -84,3 +84,36 @@ Push this folder to a GitHub repo, then either:
 
 Once deployed, paste the URL into PO Control's Settings panel under
 "PO History backend URL."
+
+## Environment variables
+
+Required:
+
+| Variable | What it's for |
+|---|---|
+| `SESSION_SECRET` | Signs PO Control login tokens. Every other backend (flexport, ssactivewear, lat, fidelitone, …) must have the **same** value, or they reject the app's logins. |
+| `INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_PASSWORD` | First admin, created when `data/users.json` doesn't exist yet. |
+
+Optional:
+
+| Variable | Default / what it's for |
+|---|---|
+| `PORT` | Port to listen on (Render sets it). |
+| `ALLOWED_ORIGINS` | Comma-separated origins allowed by CORS; `*` if unset. Set it to the app's own URL in production. |
+| `ALLOWED_DOMAIN` | Email domain allowed to sign in with Google. |
+| `GOOGLE_CLIENT_ID` | For Google sign-in. |
+| `DATA_FILE`, `CATALOG_DATA_FILE`, `CATALOG_BACKUP_DIR`, `CUSTOMER_DATA_FILE`, `DEMAND_HISTORY_DATA_FILE`, `HISTORICAL_DEMAND_DATA_FILE`, `INVOICE_DATA_FILE`, `SALES_ORDER_COUNTER_DATA_FILE`, `SUPPLIER_AVAILABILITY_DATA_FILE`, `SUPPLIER_ORDER_LEDGER_DATA_FILE`, `USER_DATA_FILE`, `WAREHOUSE_ALLOCATION_DATA_FILE`, `FLEXPORT_MATCHES_DATA_FILE`, `SHARED_SETTINGS_DATA_FILE`, `ATTACHMENTS_DIR` | Where each store keeps its file. All default to `data/…` next to the code, which must be on a persistent disk (see above). |
+
+## Shared documents and how they're protected
+
+Several things are one shared document that the whole team edits: the catalog (with inventory and incoming), demand history, Flexport matches, and shared settings.
+
+- **Catalog** (`catalogStore.js`, `catalogProtect.js`): automatic backups, a guard against a save that would shrink it by 40%+, admin-only restore, and a **version check**: every save sends the version it loaded (`baseVersion`), and a save from an out-of-date copy is refused (409 `CATALOG_STALE`). The app then stops saving in that tab and asks the user to reload.
+- **Shared settings** (`sharedSettingsStore.js`): backend URLs and the S&S/LAT style lists. Everyone reads; only admins save; same version check.
+- **Flexport matches** (`flexportMatchStore.js`): which catalog SKU # each Flexport item line counts as. Each match is set or removed on its own, so people can't overwrite each other.
+
+Writes are synchronous (no `await` between reading the current file and writing the new one), which is what makes these checks safe on a single Node process. Running more than one instance against the same files would need a real database or file locking.
+
+## Tests
+
+`npm test` starts the real server on a temporary data folder and checks the catalog version check, shared settings and Flexport matches.

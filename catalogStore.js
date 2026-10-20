@@ -31,8 +31,19 @@ function read() {
   }
 }
 
+// Every write gets the next version number. A browser saves with the version it
+// loaded (see catalogProtect.putHandler), so a tab holding an old copy is refused
+// instead of overwriting newer work. Files written before versions existed count as 0.
+const versionOf = (doc) => (doc && Number.isInteger(doc.version) ? doc.version : 0);
+
 function write(data) {
   ensureDataFile();
+  let current = null;
+  try {
+    current = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+  } catch {
+    current = null;
+  }
   fs.writeFileSync(
     DATA_FILE,
     JSON.stringify(
@@ -41,6 +52,7 @@ function write(data) {
         inventory: data.inventory ?? null,
         incomingInventory: data.incomingInventory ?? null,
         updatedAt: new Date().toISOString(),
+        version: versionOf(current) + 1,
       },
       null,
       2
@@ -50,4 +62,4 @@ function write(data) {
   return read();
 }
 
-module.exports = { read, write };
+module.exports = { read, write, versionOf };
