@@ -352,6 +352,9 @@ const catalogProtect = require("./catalogProtect");
 app.put("/api/catalog", requireAuth, catalogProtect.putHandler(catalogStore));
 catalogProtect.mount(app, { requireAuth, requireAdmin, catalogStore });
 
+// Which catalog SKU # each Flexport item line belongs to (see flexportMatchStore.js).
+require("./flexportMatchRoutes").mount(app, { requireAuth, catalogStore });
+
 /* ---------------------------------------------------------
    HISTORICAL DEMAND
    Feeds the Reorder Forecast's seasonal adjustment only — never a real
